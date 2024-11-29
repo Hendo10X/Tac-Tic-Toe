@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        .game-container {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(3, 100px);
+            gap: 5px;
+            margin: 20px auto;
+            width: 310px;
+        }
+
+        .cell {
+            width: 100px;
+            height: 100px;
+            border: 2px solid #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            cursor: pointer;
+            background: #fff;
+            transition: background-color 0.3s;
+        }
+
+        .cell:hover {
+            background: #f0f0f0;
+        }
+
+        .power-ups {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .power-up {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: opacity 0.3s;
+        }
+
+        .power-up:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin: 20px 0;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .blocker {
+            background: #ff9999;
+        }
+
+        .swapper {
+            background: #99ff99;
+        }
+
+        .double-move {
+            background: #9999ff;
+        }
+
+        .selected {
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .reset {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background: #333;
+            color: white;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="game-container">
+        <h1>Tic-Tac-Toe with Power-Ups</h1>
+        <div class="status" id="status">Player X's turn</div>
+        <div class="power-ups">
+            <button class="power-up blocker" id="blocker">Blocker (1)</button>
+            <button class="power-up swapper" id="swapper">Swapper (1)</button>
+            <button class="power-up double-move" id="double-move">Double Move (1)</button>
+        </div>
+        <div class="board" id="board"></div>
+        <button class="reset" id="reset">Reset Game</button>
+    </div>
+
+    <script>
+        class TicTacToe {
+            constructor() {
+                this.board = Array(9).fill('');
+                this.currentPlayer = 'X';
+                this.gameActive = true;
+                this.powerUps = {
+                    X: { blocker: 1, swapper: 1, doubleMove: 1 },
+                    O: { blocker: 1, swapper: 1, doubleMove: 1 }
+                };
+                this.selectedPowerUp = null;
+                this.doubleMovePending = false;
+                this.swapFirst = null;
+                this.setupBoard();
+                this.setupPowerUps();
+                this.setupReset();
+                this.updateStatus();
+            }
+
+            setupBoard() {
+                const board = document.getElementById('board');
+                board.innerHTML = '';
+                for (let i = 0; i < 9; i++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.setAttribute('data-index', i);
+                    cell.addEventListener('click', () => this.handleCellClick(i));
+                    board.appendChild(cell);
+                }
+            }
+
+            setupPowerUps() {
+                document.getElementById('blocker').addEventListener('click', () => this.selectPowerUp('blocker'));
+                document.getElementById('swapper').addEventListener('click', () => this.selectPowerUp('swapper'));
+                document.getElementById('double-move').addEventListener('click', () => this.selectPowerUp('doubleMove'));
+            }
+
+            setupReset() {
+                document.getElementById('reset').addEventListener('click', () => this.resetGame());
+            }
+
+            selectPowerUp(powerUp) {
+                if (!this.gameActive || this.powerUps[this.currentPlayer][powerUp] <= 0) return;
+
+                // Deselect if already selected
+                if (this.selectedPowerUp === powerUp) {
+                    this.selectedPowerUp = null;
+                    document.querySelectorAll('.power-up').forEach(btn => btn.classList.remove('selected'));
+                    return;
+                }
+
+                this.selectedPowerUp = powerUp;
+                document.querySelectorAll('.power-up').forEach(btn => btn.classList.remove('selected'));
+                document.querySelector(`.power-up.${powerUp}`).classList.add('selected');
+                this.updateStatus();
+            }
+
+            handleCellClick(index) {
+                if (!this.gameActive) return;
+
+                if (this.selectedPowerUp === 'swapper') {
+                    this.handleSwapper(index);
+                    return;
+                }
+
+                if (this.selectedPowerUp === 'blocker' && this.board[index] === '') {
+                    this.usePowerUp('blocker', index);
+                    return;
+                }
+
+                if (this.board[index] !== '' || !this.gameActive) return;
+
+                this.makeMove(index);
+            }
+
+            handleSwapper(index) {
+                if (this.board[index] === '') return;
+
+                if (this.swapFirst === null) {
+                    this.swapFirst = index;
+                    this.updateStatus('Select second cell to swap');
+                    return;
+                }
+
+                if (this.swapFirst !== null) {
+                    const temp = this.board[this.swapFirst];
+                    this.board[this.swapFirst] = this.board[index];
+                    this.board[index] = temp;
+                    this.usePowerUp('swapper');
+                    this.swapFirst = null;
+                    this.updateBoard();
+                    this.checkWinner();
+                    if (this.gameActive) this.switchPlayer();
+                }
+            }
+
+            makeMove(index) {
+                this.board[index] = this.currentPlayer;
+                this.updateBoard();
+
+                if (this.checkWinner()) {
+                    this.gameActive = false;
+                    return;
+                }
+
+                if (this.selectedPowerUp === 'doubleMove') {
+                    this.usePowerUp('doubleMove');
+                    this.doubleMovePending = true;
+                } else if (!this.doubleMovePending) {
+                    this.switchPlayer();
+                } else {
+                    this.doubleMovePending = false;
+                    this.switchPlayer();
+                }
+            }
+
+            usePowerUp(powerUp, index = null) {
+                if (powerUp === 'blocker' && index !== null) {
+                    this.board[index] = 'B';
+                    this.updateBoard();
+                }
+
+                this.powerUps[this.currentPlayer][powerUp]--;
+                this.updatePowerUpButtons();
+                this.selectedPowerUp = null;
+                document.querySelectorAll('.power-up').forEach(btn => btn.classList.remove('selected'));
+
+                if (powerUp === 'blocker') this.switchPlayer();
+            }
+
+            switchPlayer() {
+                this.currentPlayer = this.currentPlayer === 'X' ? 'O' : 'X';
+                this.updateStatus();
+            }
+
+            updateBoard() {
+                const cells = document.getElementsByClassName('cell');
+                for (let i = 0; i < cells.length; i++) {
+                    cells[i].textContent = this.board[i];
+                    if (this.board[i] === 'B') {
+                        cells[i].style.backgroundColor = '#ccc';
+                    } else {
+                        cells[i].style.backgroundColor = '';
+                    }
+                }
+            }
+
+            updateStatus(message = null) {
+                const status = document.getElementById('status');
+                if (message) {
+                    status.textContent = message;
+                } else if (this.selectedPowerUp) {
+                    status.textContent = `Player ${this.currentPlayer} - Using ${this.selectedPowerUp}`;
+                } else {
+                    status.textContent = `Player ${this.currentPlayer}'s turn`;
+                }
+            }
+
+            updatePowerUpButtons() {
+                for (const [powerUp, count] of Object.entries(this.powerUps[this.currentPlayer])) {
+                    const buttonId = powerUp === 'doubleMove' ? 'double-move' : powerUp;
+                    const button = document.getElementById(buttonId);
+                    button.textContent = `${powerUp} (${count})`;
+                    button.disabled = count <= 0;
+                }
+            }
+
+            checkWinner() {
+                const winPatterns = [
+                    [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
+                    [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
+                    [0, 4, 8], [2, 4, 6] // Diagonals
+                ];
+
+                for (const pattern of winPatterns) {
+                    const [a, b, c] = pattern;
+                    if (this.board[a] &&
+                        this.board[a] !== 'B' &&
+                        this.board[a] === this.board[b] &&
+                        this.board[a] === this.board[c]) {
+                        this.updateStatus(`Player ${this.board[a]} wins!`);
+                        this.gameActive = false;
+                        return true;
+                    }
+                }
+
+                if (!this.board.includes('')) {
+                    this.updateStatus("It's a draw!");
+                    this.gameActive = false;
+                    return true;
+                }
+
+                return false;
+            }
+
+            resetGame() {
+                this.board = Array(9).fill('');
+                this.currentPlayer = 'X';
+                this.gameActive = true;
+                this.selectedPowerUp = null;
+                this.doubleMovePending = false;
+                this.swapFirst = null;
+                this.powerUps = {
+                    X: { blocker: 1, swapper: 1, doubleMove: 1 },
+                    O: { blocker: 1, swapper: 1, doubleMove: 1 }
+                };
+                this.updateBoard();
+                this.updateStatus();
+                this.updatePowerUpButtons();
+                document.querySelectorAll('.power-up').forEach(btn => {
+                    btn.classList.remove('selected');
+                    btn.disabled = false;
+                });
+            }
+        }
+
+        // Start the game
+        const game = new TicTacToe();
+    </script>
+</body>
+
+</html>
